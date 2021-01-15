@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use reqwest::StatusCode;
 
 pub const MOJANG_API: &str = "https://authserver.mojang.com";
 
@@ -125,6 +126,69 @@ pub fn refresh(access_token: &str, client_token: &str, selected_profile: &Refres
     let value: RefreshResponse = serde_json::from_str(&*response.to_string()).expect("");
 
     Ok(Some(value))
+}
+
+pub fn validate(access_token: &str, client_token: &str) -> Result<bool, reqwest::Error> {
+    let client = reqwest::blocking::Client::new();
+    let request_url = format!("{api}/{path}", api = MOJANG_API, path = "validate");
+
+    let json: &serde_json::Value = &serde_json::json!({
+        "accessToken": access_token,
+        "clientToken": client_token
+    });
+
+    let response = client.post(&request_url)
+        .header("Content-Type", "application/json")
+        .json(&json)
+        .send()?;
+
+    if response.status() == StatusCode::NO_CONTENT {
+        Ok(true)
+    }else{
+        Ok(false)
+    }
+}
+
+pub fn sign_out(email: &str, password: &str) -> Result<bool, reqwest::Error> {
+    let client = reqwest::blocking::Client::new();
+    let request_url = format!("{api}/{path}", api = MOJANG_API, path = "signout");
+
+    let json: &serde_json::Value = &serde_json::json!({
+        "username": email,
+        "password": password
+    });
+
+    let response = client.post(&request_url)
+        .header("Content-Type", "application/json")
+        .json(&json)
+        .send()?;
+
+    if response.status() == StatusCode::NO_CONTENT {
+        Ok(true)
+    }else{
+        Ok(false)
+    }
+}
+
+pub fn invalidate(access_token: &str, client_token: &str) -> Result<bool, reqwest::Error> {
+    let client = reqwest::blocking::Client::new();
+    let request_url = format!("{api}/{path}", api = MOJANG_API, path = "invalidate");
+
+    let json: &serde_json::Value = &serde_json::json!({
+        "accessToken": access_token,
+        "clientToken": client_token
+    });
+
+    let response = client.post(&request_url)
+        .header("Content-Type", "application/json")
+        .json(&json)
+        .send()?;
+
+    if response.status() == StatusCode::NO_CONTENT {
+        Ok(true)
+    }else{
+        Ok(false)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
