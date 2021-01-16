@@ -90,14 +90,12 @@ pub struct RefreshResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RefreshResponseProfile {
     pub id: Option<String>,
     pub name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RefreshResponseUser {
     pub id: Option<String>,
     pub properties: Option<Vec<UserProperty>>,
@@ -192,7 +190,6 @@ pub fn invalidate(access_token: &str, client_token: &str) -> Result<bool, reqwes
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct UserProperty {
     pub name: String,
     pub value: String,

@@ -1,1 +1,2 @@
-pub mod yggdrasil;
+pub mod minecraft;
+pub mod auth;
