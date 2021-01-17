@@ -2,21 +2,23 @@ use std::io;
 
 mod common;
 
-fn main() {
+#[tokio::main]
+async fn main() {
 
-    let version_manifest: Result<Option<common::minecraft::VersionManifest>, reqwest::Error> = common::minecraft::get_version_manifest();
+    let version_manifest: Result<Option<common::minecraft::VersionManifest>, reqwest::Error> = common::minecraft::get_version_manifest().await;
 
     match version_manifest.unwrap() {
         Some(val) =>{
-            let mut list: Vec<String> = Vec::new();
+            //let mut list: Vec<String> = Vec::new();
             for version in val.versions {
-                if !list.contains(&version.r#type) {
+                common::file_downloader::from_url(&*version.url, &*format!("./run/{}.json", version.id)).await;
+                /*if !list.contains(&version.r#type) {
                     list.push(version.r#type);
-                }
+                }*/
             }
-            for li in list {
+            /*for li in list {
                 println!("{}", li);
-            }
+            }*/
         },
         None => println!("No")
     }
@@ -29,11 +31,9 @@ fn main() {
     println!("Password: ");
     io::stdin().read_line(&mut password).expect("Something went wrong!");
 
-    let response = common::yggdrasil::authenticate(&email.trim(), &password.trim(), "");
+    let response = common::auth::yggdrasil::authenticate(&email.trim(), &password.trim(), "");
 
-    let value = response.unwrap();
-
-    match value{
+    match response.await.unwrap(){
         Some(value) => {
             if value.error == None {
                 if value.access_token != None {

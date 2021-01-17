@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
 use reqwest::StatusCode;
+use serde::{Deserialize, Serialize};
 
 pub const MOJANG_API: &str = "https://authserver.mojang.com";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticateResponse {
     pub error: Option<String>,
@@ -15,7 +15,7 @@ pub struct AuthenticateResponse {
     pub user: Option<AuthenticateResponseUser>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticateResponseProfile {
     pub agent: Option<String>,
@@ -30,7 +30,7 @@ pub struct AuthenticateResponseProfile {
     pub legacy: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticateResponseUser {
     pub id: Option<String>,
@@ -52,8 +52,8 @@ pub struct AuthenticateResponseUser {
     pub properties: Option<Vec<UserProperty>>,
 }
 
-pub fn authenticate(email: &str, password: &str, client_token: &str) -> Result<Option<AuthenticateResponse>, reqwest::Error> {
-    let client = reqwest::blocking::Client::new();
+pub async fn authenticate(email: &str, password: &str, client_token: &str) -> Result<Option<AuthenticateResponse>, reqwest::Error> {
+    let client = reqwest::Client::new();
     let request_url = format!("{api}/{path}", api = MOJANG_API, path = "authenticate");
 
     let json: &serde_json::Value = &serde_json::json!({
@@ -67,18 +67,20 @@ pub fn authenticate(email: &str, password: &str, client_token: &str) -> Result<O
             "requestUser": true
         });
 
-    let response: serde_json::Value = client.post(&request_url)
+    let response = client.post(&request_url)
         .header("Content-Type", "application/json")
         .json(&json)
-        .send()?
-        .json()?;
+        .send()
+        .await?;
 
-    let value: AuthenticateResponse = serde_json::from_str(&*response.to_string()).expect("");
+    let value: AuthenticateResponse = response
+        .json()
+        .await?;
 
     Ok(Some(value))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshResponse {
     pub error: Option<String>,
@@ -89,20 +91,20 @@ pub struct RefreshResponse {
     pub user: Option<RefreshResponseUser>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct RefreshResponseProfile {
     pub id: Option<String>,
     pub name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct RefreshResponseUser {
     pub id: Option<String>,
     pub properties: Option<Vec<UserProperty>>,
 }
 
-pub fn refresh(access_token: &str, client_token: &str, selected_profile: &RefreshResponseProfile) -> Result<Option<RefreshResponse>, reqwest::Error> {
-    let client = reqwest::blocking::Client::new();
+pub async fn refresh(access_token: &str, client_token: &str, selected_profile: &RefreshResponseProfile) -> Result<Option<RefreshResponse>, reqwest::Error> {
+    let client = reqwest::Client::new();
     let request_url = format!("{api}/{path}", api = MOJANG_API, path = "refresh");
 
     let json: &serde_json::Value = &serde_json::json!({
@@ -115,19 +117,19 @@ pub fn refresh(access_token: &str, client_token: &str, selected_profile: &Refres
         "requestUser": true
     });
 
-    let response: serde_json::Value = client.post(&request_url)
+    let response = client.post(&request_url)
         .header("Content-Type", "application/json")
         .json(&json)
-        .send()?
-        .json()?;
+        .send()
+        .await?;
 
-    let value: RefreshResponse = serde_json::from_str(&*response.to_string()).expect("");
+    let value: RefreshResponse = response.json().await?;
 
     Ok(Some(value))
 }
 
-pub fn validate(access_token: &str, client_token: &str) -> Result<bool, reqwest::Error> {
-    let client = reqwest::blocking::Client::new();
+pub async fn validate(access_token: &str, client_token: &str) -> Result<bool, reqwest::Error> {
+    let client = reqwest::Client::new();
     let request_url = format!("{api}/{path}", api = MOJANG_API, path = "validate");
 
     let json: &serde_json::Value = &serde_json::json!({
@@ -138,17 +140,18 @@ pub fn validate(access_token: &str, client_token: &str) -> Result<bool, reqwest:
     let response = client.post(&request_url)
         .header("Content-Type", "application/json")
         .json(&json)
-        .send()?;
+        .send()
+        .await?;
 
     if response.status() == StatusCode::NO_CONTENT {
         Ok(true)
-    }else{
+    } else {
         Ok(false)
     }
 }
 
-pub fn sign_out(email: &str, password: &str) -> Result<bool, reqwest::Error> {
-    let client = reqwest::blocking::Client::new();
+pub async fn sign_out(email: &str, password: &str) -> Result<bool, reqwest::Error> {
+    let client = reqwest::Client::new();
     let request_url = format!("{api}/{path}", api = MOJANG_API, path = "signout");
 
     let json: &serde_json::Value = &serde_json::json!({
@@ -159,17 +162,18 @@ pub fn sign_out(email: &str, password: &str) -> Result<bool, reqwest::Error> {
     let response = client.post(&request_url)
         .header("Content-Type", "application/json")
         .json(&json)
-        .send()?;
+        .send()
+        .await?;
 
     if response.status() == StatusCode::NO_CONTENT {
         Ok(true)
-    }else{
+    } else {
         Ok(false)
     }
 }
 
-pub fn invalidate(access_token: &str, client_token: &str) -> Result<bool, reqwest::Error> {
-    let client = reqwest::blocking::Client::new();
+pub async fn invalidate(access_token: &str, client_token: &str) -> Result<bool, reqwest::Error> {
+    let client = reqwest::Client::new();
     let request_url = format!("{api}/{path}", api = MOJANG_API, path = "invalidate");
 
     let json: &serde_json::Value = &serde_json::json!({
@@ -180,16 +184,17 @@ pub fn invalidate(access_token: &str, client_token: &str) -> Result<bool, reqwes
     let response = client.post(&request_url)
         .header("Content-Type", "application/json")
         .json(&json)
-        .send()?;
+        .send()
+        .await?;
 
     if response.status() == StatusCode::NO_CONTENT {
         Ok(true)
-    }else{
+    } else {
         Ok(false)
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct UserProperty {
     pub name: String,
     pub value: String,

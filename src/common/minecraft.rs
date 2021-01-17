@@ -22,14 +22,14 @@ pub struct Version{
     pub release_time: String
 }
 
-pub fn get_version_manifest() -> Result<Option<VersionManifest>, reqwest::Error>{
-    let client = reqwest::blocking::Client::new();
+pub async fn get_version_manifest() -> Result<Option<VersionManifest>, reqwest::Error>{
+    let client = reqwest::Client::new();
 
-    let response: serde_json::Value = client.get("https://launchermeta.mojang.com/mc/game/version_manifest.json")
-        .send()?
-        .json()?;
+    let response = client.get("https://launchermeta.mojang.com/mc/game/version_manifest.json")
+        .send()
+        .await?;
 
-    let value: VersionManifest = serde_json::from_str(&*response.to_string()).expect("");
+    let value: VersionManifest = response.json().await?;
 
     Ok(Some(value))
 }
