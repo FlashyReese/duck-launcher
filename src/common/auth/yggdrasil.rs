@@ -1,5 +1,5 @@
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub const MOJANG_API: &str = "https://authserver.mojang.com";
 

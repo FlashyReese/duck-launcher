@@ -1,48 +1,26 @@
 use std::io;
+use common::minecraft::VersionManifest;
+use futures::StreamExt;
+use std::time::SystemTime;
 
 mod common;
 
 #[tokio::main]
 async fn main() {
+    /*let response: common::minecraft::AssetIndex = reqwest::get("https://launchermeta.mojang.com/v1/packages/d6c94fad4f7a03a8e46083c023926515fc0e551e/1.14.json")
+        .await
+        .expect("Something went wrong")
+        .json()
+        .await
+        .expect("Something");
+    common::minecraft::download_assets(response).await;*/
 
-    let version_manifest: Result<Option<common::minecraft::VersionManifest>, reqwest::Error> = common::minecraft::get_version_manifest().await;
-
-    match version_manifest.unwrap() {
-        Some(val) =>{
-            //let mut list: Vec<String> = Vec::new();
-            for version in val.versions {
-                common::file_downloader::from_url(&*version.url, &*format!("./run/{}.json", version.id)).await;
-                /*if !list.contains(&version.r#type) {
-                    list.push(version.r#type);
-                }*/
+    match common::minecraft::get_version("1.16.5").unwrap() {
+        Some(val) => {
+            for library in &val.libraries {
+                println!("{}", &library.downloads.artifact.url);
             }
-            /*for li in list {
-                println!("{}", li);
-            }*/
-        },
-        None => println!("No")
+        }
+        None => {}
     }
-
-    /*let mut email = String::new();
-    let mut password = String::new();
-
-    println!("Email: ");
-    io::stdin().read_line(&mut email).expect("Something went wrong!");
-    println!("Password: ");
-    io::stdin().read_line(&mut password).expect("Something went wrong!");
-
-    let response = common::auth::yggdrasil::authenticate(&email.trim(), &password.trim(), "");
-
-    match response.await.unwrap(){
-        Some(value) => {
-            if value.error == None {
-                if value.access_token != None {
-                    println!("Hey there, {}", value.selected_profile.unwrap().name.unwrap());
-                }
-            }else {
-                println!("Login Error: {}", value.error_message.unwrap())
-            }
-        },
-        None => println!("None")
-    }*/
 }

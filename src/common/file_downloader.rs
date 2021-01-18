@@ -5,7 +5,11 @@ use std::io::prelude::*;
 pub async fn from_url(url: &str, path: &str) -> Result<(), reqwest::Error> {
     let response = reqwest::get(url).await?;
 
-    let mut file = match File::create(Path::new(path)) {
+    let path = Path::new(path);
+
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+
+    let mut file = match File::create(path) {
         Err(why) => panic!("couldn't create {}", why),
         Ok(file) => file,
     };
