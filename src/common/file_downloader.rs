@@ -1,11 +1,9 @@
-use std::path::Path;
+use std::path::PathBuf;
 use std::fs::File;
 use std::io::prelude::*;
 
-pub async fn from_url(url: &str, path: &str) -> Result<(), reqwest::Error> {
+pub async fn from_url(url: &str, path: &PathBuf) -> Result<(), reqwest::Error> {
     let response = reqwest::get(url).await?;
-
-    let path = Path::new(path);
 
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
 
