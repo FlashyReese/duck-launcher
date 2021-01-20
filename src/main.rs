@@ -1,6 +1,5 @@
-use std::io;
-
 mod common;
+mod minecraft;
 
 #[tokio::main]
 async fn main() {
@@ -12,29 +11,33 @@ async fn main() {
     println!("Password: ");
     io::stdin().read_line(&mut password).expect("Something went wrong!");
 
-    let response = common::auth::yggdrasil::authenticate(&email.trim(), &password.trim(), "").await;
+    let response = minecraft::yggdrasil::authenticate(&email.trim(), &password.trim(), "").await;
 
     let value = response.unwrap();
 
-    match value{
+    match value {
         Some(authentication_response) => {
             if authentication_response.error == None {
-                match common::minecraft::get_version("1.16.5").await {
+                match minecraft::version::get_version("1.13.2").await {
                     Ok(option_version) => {
                         match option_version {
                             Some(version) => {
-                                common::minecraft::download_assets(&version).await;
-                                common::minecraft::download_libraries(&version).await;
-                                common::minecraft::download_natives(&version).await;
-                                common::minecraft::download_client(&version).await;
-                                common::minecraft::launch_client(&authentication_response ,&version);
+                                println!("Fetching Assets");
+                                minecraft::asset::download_assets(&version).await;
+                                println!("Fetching Libraries");
+                                minecraft::dependency::download_libraries(&version).await;
+                                println!("Fetching Natives");
+                                minecraft::dependency::download_natives(&version).await;
+                                println!("Fetching Client");
+                                minecraft::download_client(&version).await;
+                                minecraft::launch_client(&authentication_response, &version);
                             }
                             None => {}
                         }
                     }
                     Err(e) => panic!("{}", e)
                 }
-            }else {
+            } else {
                 println!("Login Error: {}", authentication_response.error_message.unwrap())
             }
         }
