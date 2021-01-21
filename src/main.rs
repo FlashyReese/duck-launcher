@@ -1,3 +1,5 @@
+use std::io;
+
 mod common;
 mod minecraft;
 
@@ -18,16 +20,16 @@ async fn main() {
     match value {
         Some(authentication_response) => {
             if authentication_response.error == None {
-                match minecraft::version::get_version("1.13.2").await {
+                match minecraft::version::get_version("1.16.5").await {
                     Ok(option_version) => {
                         match option_version {
                             Some(version) => {
                                 println!("Fetching Assets");
-                                minecraft::asset::download_assets(&version).await;
+                                minecraft::asset::verify_assets(&version).await;
                                 println!("Fetching Libraries");
-                                minecraft::dependency::download_libraries(&version).await;
+                                minecraft::dependency::verify_libraries(&version).await;
                                 println!("Fetching Natives");
-                                minecraft::dependency::download_natives(&version).await;
+                                minecraft::dependency::verify_natives(&version).await;
                                 println!("Fetching Client");
                                 minecraft::download_client(&version).await;
                                 minecraft::launch_client(&authentication_response, &version);
