@@ -1,6 +1,7 @@
 use std::io;
 use crate::minecraft::version::Version;
 use crate::minecraft::{Instance, InstanceType, InstanceFlavor};
+use crate::minecraft::dependency::LibrariesMetadata;
 
 mod common;
 mod minecraft;
@@ -29,6 +30,8 @@ async fn main() {
                 match Version::get_version(&version.trim()).await {
                     Ok(option_version) => {
                         if let Some(version) = option_version {
+                            let libs_meta = LibrariesMetadata::new().push_mc_version(&version).await;
+                            libs_meta.save();
                             println!("Fetching Assets");
                             version.verify_assets().await;
                             println!("Fetching Libraries");
@@ -48,6 +51,4 @@ async fn main() {
         }
         None => println!("None")
     }
-    let instance = Instance::new("kekw", "")
-        .with_type(InstanceType::CLIENT).with_flavor(InstanceFlavor::VANILLA);
 }

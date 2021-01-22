@@ -66,7 +66,7 @@ pub struct VersionLibrary {
     pub name: String,
     pub url: Option<String>,//maven link
     pub natives: Option<HashMap<String, String>>,
-    pub rule: Option<Value>,//todo:
+    pub rules: Option<Vec<VersionLibraryRule>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,6 +81,18 @@ pub struct VersionLibraryDownloadObject {
     pub sha1: String,
     pub size: u64,
     pub url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VersionLibraryRule{
+    pub action: String,
+    pub os: Option<VersionLibraryRuleOSObject>
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VersionLibraryRuleOSObject{
+    pub name: String,
+    pub version: Option<String>
 }
 
 impl Version{
