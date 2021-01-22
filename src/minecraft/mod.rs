@@ -8,7 +8,7 @@ use zip::ZipArchive;
 use crate::common;
 use crate::minecraft::version::Version;
 use crate::minecraft::yggdrasil::AuthenticateResponse;
-use crate::minecraft::dependency::{get_required_natives, get_required_libraries};
+use std::process::Stdio;
 
 pub mod asset;
 pub mod dependency;
@@ -16,23 +16,111 @@ pub mod version;
 pub mod version_manifest;
 pub mod yggdrasil;
 
-pub async fn download_client(version: &Version) -> Result<(), reqwest::Error> {
-    let path: PathBuf = common::join_directories(Vec::from(["libraries", "com", "mojang", "minecraft", &version.id, &*format!("{}.jar", version.id)])).unwrap();
-    if path.exists() {
-        if path.metadata().unwrap().len() != version.downloads.client.as_ref().unwrap().size {
-            match common::file_downloader::from_url(&*version.downloads.client.as_ref().unwrap().url, &path).await {
+pub enum InstanceType{
+    CLIENT,
+    SERVER,
+}
+
+pub enum InstanceFlavor{
+    FABRIC,
+    FORGE,
+    VANILLA
+}
+
+pub struct Instance{
+    version: u8,
+    tags: Option<Vec<String>>,
+    name: String,
+    r#type: InstanceType,
+    flavor: InstanceFlavor,
+    selected_account: String,
+    jvm_arguments: Option<String>,
+}
+
+pub struct Account{
+    access_token: String,
+    active_profile: String,
+    profiles: Vec<Profile>,
+    user: User,
+    username: String
+}
+
+pub struct Profile{
+    id: String,
+    legacy: bool,
+    name: String,
+}
+
+pub struct User{
+    id: String
+}
+
+impl Version{
+    pub async fn verify_client(&self) -> Result<(), reqwest::Error> {
+        let path: PathBuf = common::join_directories(Vec::from(["libraries", "com", "mojang", "minecraft", &self.id, "client", &format!("{}.jar", self.id)])).unwrap();
+        if path.exists() {
+            if path.metadata().unwrap().len() != self.downloads.client.as_ref().unwrap().size {
+                match common::file_downloader::from_url(&self.downloads.client.as_ref().unwrap().url, &path).await {
+                    Ok(()) => {}
+                    Err(e) => panic!("{}", e)
+                }
+            }
+        } else {
+            match common::file_downloader::from_url(&self.downloads.client.as_ref().unwrap().url, &path).await {
                 Ok(()) => {}
                 Err(e) => panic!("{}", e)
             }
         }
-    } else {
-        match common::file_downloader::from_url(&*version.downloads.client.as_ref().unwrap().url, &path).await {
-            Ok(()) => {}
-            Err(e) => panic!("{}", e)
+        Ok(())
+    }
+}
+
+impl Instance{
+    pub fn new(name: &str, selected_account: &str) -> Instance{
+        Instance{
+            version: 1,
+            tags: None,
+            name: name.to_string(),
+            r#type: InstanceType::CLIENT,
+            flavor: InstanceFlavor:: VANILLA,
+            selected_account: selected_account.to_string(),
+            jvm_arguments: None
         }
     }
-    Ok(())
+
+    pub fn add_tag(mut self, tag: String){
+        match self.tags {
+            Some(mut tags) => {
+                tags.push(tag);
+            },
+            None => {
+                let tags: Vec<String> = Vec::from([tag]);
+                self.tags = Some(tags);
+            }
+        }
+    }
+
+    pub fn with_type(mut self, r#type: InstanceType) -> Instance{
+        self.r#type = r#type;
+        self
+    }
+
+    pub fn with_flavor(mut self, flavor: InstanceFlavor) -> Instance{
+        self.flavor = flavor;
+        self
+    }
+
+    pub fn with_account(mut self, selected_account: String) -> Instance{
+        self.selected_account = selected_account;
+        self
+    }
+
+    pub fn with_jvm_arguments(mut self, jvm_arguments: String) -> Instance{
+        self.jvm_arguments = Some(jvm_arguments);
+        self
+    }
 }
+
 
 pub fn launch_client(authentication_response: &AuthenticateResponse, version: &Version) {
     let mut jvm_arguments: Vec<String> = Vec::new();
@@ -48,61 +136,24 @@ pub fn launch_client(authentication_response: &AuthenticateResponse, version: &V
                             arg.replace("${launcher_name}", "DuckLauncher")
                         } else if arg.contains("${natives_directory}") {
                             //todo: extract natives
-                            let mut paths: Vec<PathBuf> = Vec::new();
-                            match get_required_natives(&version) {
-                                Some(natives) => {
-                                    for native in natives {
-                                        let mut path_vector: Vec<&str> = Vec::from(["libraries"]);
-                                        for path in native.path.split('/') {
-                                            path_vector.push(path);
-                                        }
-                                        let path: PathBuf = common::join_directories(path_vector).unwrap();
-                                        paths.push(path);
-                                    }
-                                },
-                                None => {}
-                            }
                             let natives_path = common::join_directories(Vec::from(["instances", &version.id, "natives"])).unwrap();
-                            for path in paths {
+                            for path in version.get_required_natives_paths() {
                                 let file = File::open(path).expect("");
                                 let mut zip = ZipArchive::new(file).expect("");
                                 zip.extract(&natives_path);
                             }
-
                             arg.replace("${natives_directory}", &natives_path.into_os_string().into_string().unwrap())
                         } else if arg.contains("${launcher_version}") {
                             arg.replace("${launcher_version}", "1")
                         } else if arg.contains("${classpath}") {
                             let mut paths: Vec<PathBuf> = Vec::new();
-
-                            match get_required_libraries(&version) {
-                                Some(library_map) => {
-                                    for library in library_map {
-                                        let mut path_vector: Vec<&str> = Vec::from(["libraries"]);
-                                        for path in library.1.1.downloads.artifact.as_ref().unwrap().path.split('/') {
-                                            path_vector.push(path);
-                                        }
-                                        let path: PathBuf = common::join_directories(path_vector).unwrap();
-                                        paths.push(path);
-                                    }
-                                },
-                                None => {}
+                            for get_required_libraries_path in version.get_required_libraries_paths() {
+                                paths.push(get_required_libraries_path);
                             }
-
-                            match get_required_natives(&version) {
-                                Some(natives) => {
-                                    for native in natives {
-                                        let mut path_vector: Vec<&str> = Vec::from(["libraries"]);
-                                        for path in native.path.split('/') {
-                                            path_vector.push(path);
-                                        }
-                                        let path: PathBuf = common::join_directories(path_vector).unwrap();
-                                        paths.push(path);
-                                    }
-                                },
-                                None => {}
+                            for get_natives_path in version.get_required_natives_paths() {
+                                paths.push(get_natives_path);
                             }
-                            let path: PathBuf = common::join_directories(Vec::from(["libraries", "com", "mojang", "minecraft", &version.id, &*format!("{}.jar", version.id)])).unwrap();
+                            let path: PathBuf = common::join_directories(Vec::from(["libraries", "com", "mojang", "minecraft", &version.id, "client", &format!("{}.jar", version.id)])).unwrap();
                             paths.push(path);
 
                             let mut builder: String = String::new();
@@ -132,7 +183,7 @@ pub fn launch_client(authentication_response: &AuthenticateResponse, version: &V
             for game_argument in &val.game {
                 if game_argument.is_string() {
                     let arg: &str = game_argument.as_str().unwrap();
-                    if arg.contains("${") && arg.contains("}") {
+                    if arg.contains("${") && arg.contains('}') {
                         if arg.contains("auth_player_name") {
                             game_arguments.push(auth.selected_profile.as_ref().unwrap().name.as_ref().unwrap().to_owned());
                         }
@@ -173,18 +224,12 @@ pub fn launch_client(authentication_response: &AuthenticateResponse, version: &V
     let mut command = std::process::Command::new("java");
     for jvm_argument in jvm_arguments {
         command.arg(&jvm_argument);
-        println!("{}", &jvm_argument);
     }
     command.arg(&version.main_class);
-    println!("{}", &version.main_class);
     for argument in game_arguments {
         command.arg(&argument);
-        println!("{}", &argument);
     }
-    let output = command.output().expect("kekw");
-    io::stdout().write_all(&output.stdout).unwrap();
-    io::stderr().write_all(&output.stderr).unwrap();
-    /*if ! {
-        println!("kekw");
-    }*/
+    let mut output = command.stdout(Stdio::inherit()).stderr(Stdio::inherit()).spawn().expect("kekw");
+    let status = output.wait();
+    println!("Exited with status {:?}", status);
 }

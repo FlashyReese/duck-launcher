@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::common;
-use crate::minecraft::version_manifest::{fetch_version_metadata, get_version_manifest};
+use crate::minecraft::version_manifest::{VersionManifest, VersionManifestVersion};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,8 +62,9 @@ pub struct VersionDownloadObject {
 
 #[derive(Debug, Deserialize)]
 pub struct VersionLibrary {
-    pub downloads: VersionLibraryDownload,
+    pub downloads: Option<VersionLibraryDownload>,
     pub name: String,
+    pub url: Option<String>,//maven link
     pub natives: Option<HashMap<String, String>>,
     pub rule: Option<Value>,//todo:
 }
@@ -82,32 +83,42 @@ pub struct VersionLibraryDownloadObject {
     pub url: String,
 }
 
-pub async fn get_version(version: &str) -> Result<Option<Version>, std::io::Error> {
-    let path: PathBuf = common::join_directories(Vec::from(["meta", "com", "mojang", "minecraft", &version, &*format!("{}.json", version)])).unwrap();
-    if path.exists() {
-        return read_version_metadata(&path);
-    } else {
-        match get_version_manifest(true).await {
-            Ok(val) => {
-                for ver in val.versions {
-                    if ver.id.eq(version) {
-                        match fetch_version_metadata(ver).await {
-                            Ok(()) => return read_version_metadata(&path),
-                            Err(e) => panic!("{}", e)
+impl Version{
+    pub async fn get_version(version: &str) -> Result<Option<Version>, std::io::Error> {
+        let path: PathBuf = common::join_directories(Vec::from(["meta", "com", "mojang", "minecraft", &version, &*format!("{}.json", version)])).unwrap();
+        if path.exists() {
+            return Version::read(&path);
+        } else {
+            match VersionManifest::get(true).await {
+                Ok(val) => {
+                    for ver in val.versions {
+                        if ver.id.eq(version) {
+                            match Version::fetch(ver).await {
+                                Ok(()) => return Version::read(&path),
+                                Err(e) => panic!("{}", e)
+                            }
                         }
                     }
                 }
+                Err(e) => panic!("{}", e)
             }
+        }
+        Ok(None)
+    }
+
+    fn read(path: &PathBuf) -> Result<Option<Version>, std::io::Error> {
+        let mut file = File::open(path)?;
+        let mut data = String::new();
+        file.read_to_string(&mut data).expect("Unable to read file");
+        let version: Version = serde_json::from_str(&data).expect("JSON was not well-formatted");
+        Ok(Some(version))
+    }
+
+    pub async fn fetch(version: VersionManifestVersion) -> Result<(), reqwest::Error> {
+        let path: PathBuf = common::join_directories(Vec::from(["meta", "com", "mojang", "minecraft", &version.id, &*format!("{}.json", &version.id)])).unwrap();
+        match common::file_downloader::from_url(&version.url, &path).await {
+            Ok(()) => Ok(()),
             Err(e) => panic!("{}", e)
         }
     }
-    Ok(None)
-}
-
-fn read_version_metadata(path: &PathBuf) -> Result<Option<Version>, std::io::Error> {
-    let mut file = File::open(path)?;
-    let mut data = String::new();
-    file.read_to_string(&mut data).expect("Unable to read file");
-    let version: Version = serde_json::from_str(&data).expect("JSON was not well-formatted");
-    return Ok(Some(version));
 }

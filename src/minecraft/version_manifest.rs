@@ -30,31 +30,25 @@ pub struct VersionManifestVersion {
     pub release_time: String,
 }
 
-pub async fn get_version_manifest(refresh: bool) -> Result<VersionManifest, std::io::Error> {
-    let path: PathBuf = common::join_directories(Vec::from(["meta", "com", "mojang", "minecraft", "version_manifest.json"])).unwrap();
-    if path.exists() && !refresh {
-        return read_version_manifest(&path);
-    } else {
-        match common::file_downloader::from_url(MINECRAFT_VERSION_MANIFEST, &path).await {
-            Ok(()) => return read_version_manifest(&path),
-            Err(e) => panic!("{}", e)
+impl VersionManifest{
+    pub async fn get(refresh: bool) -> Result<VersionManifest, std::io::Error> {
+        let path: PathBuf = common::join_directories(Vec::from(["meta", "com", "mojang", "minecraft", "version_manifest.json"])).unwrap();
+        if path.exists() && !refresh {
+            return VersionManifest::read(&path);
+        } else {
+            match common::file_downloader::from_url(MINECRAFT_VERSION_MANIFEST, &path).await {
+                Ok(()) => return VersionManifest::read(&path),
+                Err(e) => panic!("{}", e)
+            }
         }
     }
-}
 
-fn read_version_manifest(path: &PathBuf) -> Result<VersionManifest, std::io::Error> {
-    let mut file = File::open(path)?;
-    let mut data = String::new();
-    file.read_to_string(&mut data).expect("Unable to read file");
-    let version: VersionManifest = serde_json::from_str(&data).expect("JSON was not well-formatted");
-    Ok(version)
-}
-
-pub async fn fetch_version_metadata(version: VersionManifestVersion) -> Result<(), reqwest::Error> {
-    let path: PathBuf = common::join_directories(Vec::from(["meta", "com", "mojang", "minecraft", &version.id, &*format!("{}.json", &version.id)])).unwrap();
-    match common::file_downloader::from_url(&version.url, &path).await {
-        Ok(()) => Ok(()),
-        Err(e) => panic!("{}", e)
+    pub fn read(path: &PathBuf) -> Result<VersionManifest, std::io::Error> {
+        let mut file = File::open(path)?;
+        let mut data = String::new();
+        file.read_to_string(&mut data).expect("Unable to read file");
+        let version: VersionManifest = serde_json::from_str(&data).expect("JSON was not well-formatted");
+        Ok(version)
     }
 }
 

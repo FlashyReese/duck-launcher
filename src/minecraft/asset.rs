@@ -24,93 +24,95 @@ struct AssetIndexObject {
     size: u64,
 }
 
-pub async fn verify_assets(version: &Version) -> Result<(), reqwest::Error> {
-    let path: PathBuf = common::join_directories(Vec::from(["assets", "indexes", &*format!("{}.json", &version.assets)])).unwrap();
-    return if path.exists() {
-        if path.metadata().unwrap().len() != version.asset_index.size {
-            fetch_assets_index(&version, &path).await
+impl Version{
+    pub async fn verify_assets(&self) -> Result<(), reqwest::Error> {
+        let path: PathBuf = common::join_directories(Vec::from(["assets", "indexes", &*format!("{}.json", &self.assets)])).unwrap();
+        return if path.exists() {
+            if path.metadata().unwrap().len() != self.asset_index.size {
+                self.fetch_assets_index(&path).await
+            } else {
+                self.fetch_assets(&path).await
+            }
         } else {
-            fetch_assets(&version, &path).await
-        }
-    } else {
-        fetch_assets_index(&version, &path).await
-    };
-}
-
-async fn fetch_assets_index(version: &Version, path: &PathBuf) -> Result<(), reqwest::Error> {
-    match common::file_downloader::from_url(&version.asset_index.url, &path).await {
-        Ok(()) => return fetch_assets(&version, &path).await,
-        Err(e) => panic!("{}", e)
+            self.fetch_assets_index(&path).await
+        };
     }
-}
 
-async fn fetch_assets(version: &Version, path: &PathBuf) -> Result<(), reqwest::Error> {
-    let mut file = File::open(path).expect("Something");
-    let mut data = String::new();
-    file.read_to_string(&mut data).expect("Unable to read file");
-
-    let asset_index: AssetIndex = serde_json::from_str(&data).expect("");
-    match asset_index.r#virtual {//Todo: map to resources
-        Some(_val) => {
-            let mut assets_objects: HashMap<String, AssetIndexObject> = HashMap::new();
-            for object in asset_index.objects {
-                let mut path_vector: Vec<&str> = Vec::from(["assets", "virtual", &version.assets]);
-                for path in object.0.split('/') {
-                    path_vector.push(path);
-                }
-                let path: PathBuf = common::join_directories(path_vector).unwrap();
-                if !path.exists() || path.metadata().unwrap().len() != object.1.size {
-                    assets_objects.insert(object.0, object.1);
-                }
-            }
-
-            let assets_objects_size = assets_objects.len().to_owned();
-            if assets_objects_size > 0 {
-                let fetches = futures::stream::iter(
-                    assets_objects.into_iter().map(|object| {
-                        async move {
-                            let mut path_vector: Vec<&str> = Vec::from(["assets", "virtual", &version.assets]);
-                            for path in object.0.split('/') {
-                                path_vector.push(path);
-                            }
-                            let path: PathBuf = common::join_directories(path_vector).unwrap();
-                            let url = format!("{api}/{two_hash}/{complete_hash}", api = MINECRAFT_RESOURCES, two_hash = &object.1.hash[0..2], complete_hash = &object.1.hash);
-                            match common::file_downloader::from_url(&url, &path).await {
-                                Ok(()) => {}
-                                Err(e) => panic!("{}", e)
-                            }
-                        }
-                    })
-                ).buffer_unordered(assets_objects_size).collect::<Vec<()>>();
-                fetches.await;
-            }
-        }
-        None => {
-            let mut assets_objects: HashMap<String, AssetIndexObject> = HashMap::new();
-            for object in asset_index.objects {
-                let path: PathBuf = common::join_directories(Vec::from(["assets", "objects", &object.1.hash[0..2], &object.1.hash])).unwrap();
-                if !path.exists() || path.metadata().unwrap().len() != object.1.size {
-                    assets_objects.insert(object.0, object.1);
-                }
-            }
-
-            let assets_objects_size = assets_objects.len().to_owned();
-            if assets_objects_size > 1 {
-                let fetches = futures::stream::iter(
-                    assets_objects.into_iter().map(|object| {
-                        async move {
-                            let path: PathBuf = common::join_directories(Vec::from(["assets", "objects", &object.1.hash[0..2], &object.1.hash])).unwrap();
-                            let url = format!("{api}/{two_hash}/{complete_hash}", api = MINECRAFT_RESOURCES, two_hash = &object.1.hash[0..2], complete_hash = &object.1.hash);
-                            match common::file_downloader::from_url(&url, &path).await {
-                                Ok(()) => {}
-                                Err(e) => panic!("{}", e)
-                            }
-                        }
-                    })
-                ).buffer_unordered(assets_objects_size).collect::<Vec<()>>();
-                fetches.await;
-            }
+    async fn fetch_assets_index(&self, path: &PathBuf) -> Result<(), reqwest::Error> {
+        match common::file_downloader::from_url(&self.asset_index.url, &path).await {
+            Ok(()) => return self.fetch_assets(&path).await,
+            Err(e) => panic!("{}", e)
         }
     }
-    Ok(())
+
+    async fn fetch_assets(&self, path: &PathBuf) -> Result<(), reqwest::Error> {
+        let mut file = File::open(path).expect("Something");
+        let mut data = String::new();
+        file.read_to_string(&mut data).expect("Unable to read file");
+
+        let asset_index: AssetIndex = serde_json::from_str(&data).expect("");
+        match asset_index.r#virtual {//Todo: map to resources
+            Some(_val) => {
+                let mut assets_objects: HashMap<String, AssetIndexObject> = HashMap::new();
+                for object in asset_index.objects {
+                    let mut path_vector: Vec<&str> = Vec::from(["assets", "virtual", &self.assets]);
+                    for path in object.0.split('/') {
+                        path_vector.push(path);
+                    }
+                    let path: PathBuf = common::join_directories(path_vector).unwrap();
+                    if !path.exists() || path.metadata().unwrap().len() != object.1.size {
+                        assets_objects.insert(object.0, object.1);
+                    }
+                }
+
+                let assets_objects_size = assets_objects.len().to_owned();
+                if assets_objects_size > 0 {
+                    let fetches = futures::stream::iter(
+                        assets_objects.into_iter().map(|object| {
+                            async move {
+                                let mut path_vector: Vec<&str> = Vec::from(["assets", "virtual", &self.assets]);
+                                for path in object.0.split('/') {
+                                    path_vector.push(path);
+                                }
+                                let path: PathBuf = common::join_directories(path_vector).unwrap();
+                                let url = format!("{api}/{two_hash}/{complete_hash}", api = MINECRAFT_RESOURCES, two_hash = &object.1.hash[0..2], complete_hash = &object.1.hash);
+                                match common::file_downloader::from_url(&url, &path).await {
+                                    Ok(()) => {}
+                                    Err(e) => panic!("{}", e)
+                                }
+                            }
+                        })
+                    ).buffer_unordered(assets_objects_size).collect::<Vec<()>>();//sips memory todo all buffer
+                    fetches.await;
+                }
+            }
+            None => {
+                let mut assets_objects: HashMap<String, AssetIndexObject> = HashMap::new();
+                for object in asset_index.objects {
+                    let path: PathBuf = common::join_directories(Vec::from(["assets", "objects", &object.1.hash[0..2], &object.1.hash])).unwrap();
+                    if !path.exists() || path.metadata().unwrap().len() != object.1.size {
+                        assets_objects.insert(object.0, object.1);
+                    }
+                }
+
+                let assets_objects_size = assets_objects.len().to_owned();
+                if assets_objects_size > 1 {
+                    let fetches = futures::stream::iter(
+                        assets_objects.into_iter().map(|object| {
+                            async move {
+                                let path: PathBuf = common::join_directories(Vec::from(["assets", "objects", &object.1.hash[0..2], &object.1.hash])).unwrap();
+                                let url = format!("{api}/{two_hash}/{complete_hash}", api = MINECRAFT_RESOURCES, two_hash = &object.1.hash[0..2], complete_hash = &object.1.hash);
+                                match common::file_downloader::from_url(&url, &path).await {
+                                    Ok(()) => {}
+                                    Err(e) => panic!("{}", e)
+                                }
+                            }
+                        })
+                    ).buffer_unordered(assets_objects_size).collect::<Vec<()>>();
+                    fetches.await;
+                }
+            }
+        }
+        Ok(())
+    }
 }
