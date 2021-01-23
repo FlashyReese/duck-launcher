@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::common;
 use crate::minecraft::version_manifest::{VersionManifest, VersionManifestVersion};
+use crate::minecraft::dependency::{LibrariesMetadataDependency, LibrariesMetadataDependencyNative};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,7 +73,7 @@ pub struct VersionLibrary {
 #[derive(Debug, Deserialize)]
 pub struct VersionLibraryDownload {
     pub artifact: Option<VersionLibraryDownloadObject>,
-    pub classifiers: Option<HashMap<String, VersionLibraryDownloadObject>>,
+    pub classifiers: Option<HashMap<String, VersionLibraryDownloadObject>>
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,5 +133,46 @@ impl Version{
             Ok(()) => Ok(()),
             Err(e) => panic!("{}", e)
         }
+    }
+}
+
+impl VersionLibrary{
+    pub fn to_libraries_metadata_dependency(&self, version: &String) -> LibrariesMetadataDependency{
+        let id: String = version.to_string();
+        let name: String = self.name.to_owned().to_string();
+
+        let size: Option<u64> = if let Some(downloads) = &self.downloads {
+            if let Some(artifact) = &downloads.artifact {
+                Some(artifact.size)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let url: Option<String> = if let Some(downloads) = &self.downloads {
+            if let Some(artifact) = &downloads.artifact {
+                Some(artifact.url.to_owned().to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let path: Option<String> = if let Some(downloads) = &self.downloads {
+            if let Some(artifact) = &downloads.artifact {
+                Some(artifact.path.to_owned().to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let native: Option<LibrariesMetadataDependencyNative> = LibrariesMetadataDependencyNative::parse_from(self);
+
+        LibrariesMetadataDependency {id, name, size, url, path, native}
     }
 }

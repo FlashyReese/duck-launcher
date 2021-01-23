@@ -229,9 +229,16 @@ impl Version {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LibrariesMetadata {
     pub version: u8,
-    pub libraries: Vec<LibrariesMetadataDependency>,
+    pub libraries: Vec<GAV>,
     pub clients: Vec<LibrariesMetadataDependency>,
     pub servers: Vec<LibrariesMetadataDependency>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GAV{
+    pub group: String,
+    pub artifact: String,
+    pub versions: Vec<LibrariesMetadataDependency>
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -292,140 +299,38 @@ impl LibrariesMetadata {
 
     pub async fn push_mc_version(mut self, version: &Version) -> LibrariesMetadata {
         for library in &version.libraries {
-            let id = &library.name.to_owned();
-            if self.libraries_contains(&id) {
-                continue;
-            }
-
-            let name = &library.name.to_owned();
-
-            let size: Option<u64> = if let Some(downloads) = &library.downloads {
-                if let Some(artifact) = &downloads.artifact {
-                    Some(artifact.size)
-                } else {
-                    None
-                }
-            } else if let Some(url) = &library.url {
-                let dependency = Dependency::from_version_library(&library);
-                if let Some(dependency) = dependency {
-                    let url = format!("{url}/{maven_layout}", url = url, maven_layout = dependency.to_maven_url_layout_jar());
-                    let res = reqwest::get(&url).await;//fixme: really dumb
-                    match res {
-                        Ok(res) => {
-                            if let Some(length) = res.content_length() {
-                                Some(length)
-                            }else{
-                                None
-                            }
-                        },
-                        Err(e) => panic!("{}", e)
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            let url: Option<String> = if let Some(downloads) = &library.downloads {
-                if let Some(artifact) = &downloads.artifact {
-                    Some(artifact.url.to_owned().to_string())
-                } else {
-                    None
-                }
-            } else if let Some(url) = &library.url {
-                let dependency = Dependency::from_version_library(&library);
-                if let Some(dependency) = dependency {
-                    Some(format!("{url}/{maven_layout}", url = url, maven_layout = dependency.to_maven_url_layout_jar()))
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            let path: Option<String> = if let Some(downloads) = &library.downloads {
-                if let Some(artifact) = &downloads.artifact {
-                    Some(artifact.path.to_owned().to_string())
-                } else {
-                    None
-                }
-            } else if let Some(url) = &library.url {
-                let dependency = Dependency::from_version_library(&library);
-                if let Some(dependency) = dependency {
-                    Some(dependency.to_maven_url_layout_jar())
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            let native: Option<LibrariesMetadataDependencyNative> = {
-                if let Some(downloads) = &library.downloads {
-                    if let Some(classifiers) = &downloads.classifiers {
-                        let mut map: HashMap<String, LibrariesMetadataDependency> = HashMap::new();
-                        for classifier in classifiers {
-                            let dep = Dependency::from_version_library_download_object(classifier.1);
-                            let id = format!("{}:{}:{}", dep.group, dep.artifact, dep.version);
-                            let name = id.to_owned();
-                            let size = classifier.1.size.to_owned();
-                            let url = &classifier.1.url.to_owned();
-                            let path = &classifier.1.path.to_owned();
-                            map.insert(classifier.0.to_string(), LibrariesMetadataDependency{
-                                id,
-                                name,
-                                size: Some(size),
-                                url: Some(url.to_string()),
-                                path: Some(path.to_string()),
-                                native: None
-                            });
-                        }
-
-                        let mut rules_map: HashMap<String, LibrariesMetadataDependencyNativeRule> = HashMap::new();
-                        if let Some(rules) = &library.rules {
-                            for rule in rules {
-                                let mut key;
-                                let allowed = rule.action.eq("allowed");
-                                let mut version;
-                                if let Some(os) = &rule.os{
-                                    if let Some(os_version) = &os.version{
-                                        version = Some(os_version.to_string());
-                                    }else{
-                                        version = None;
-                                    }
-                                    key = &os.name;
-                                }else{
-                                    continue;
-                                }
-                                rules_map.insert(key.to_string(), LibrariesMetadataDependencyNativeRule{allowed, version});
-                            }
-                        }
-                        if rules_map.len() == 0 {
-                            Some(LibrariesMetadataDependencyNative{platforms: map, rules: None})
+            let dep = Dependency::from_version_library(library);
+            if let Some(dep) = dep{
+                let library_gav: Option<&mut GAV> = self.get_gav(&dep.group, &dep.artifact);
+                match library_gav{
+                    Some(mut gav) => {
+                        if !gav.contains_version(&dep.version) {
+                            gav.push_version(library.to_libraries_metadata_dependency(&dep.version));
                         }else{
-                            Some(LibrariesMetadataDependencyNative{platforms: map, rules: Some(rules_map)})
+                            match gav.get_version(&dep.version){
+                                Some(mut version) => {
+                                    match &version.native {
+                                        Some(_natives) => {},
+                                        None => version.native = LibrariesMetadataDependencyNative::parse_from(&library)
+                                    }
+                                },
+                                None => {}
+                            }
                         }
-                    } else {
-                        None
+                    },
+                    None => {
+                        self.push_library(GAV{
+                            group: dep.group,
+                            artifact: dep.artifact,
+                            versions: Vec::from([library.to_libraries_metadata_dependency(&dep.version)])
+                        });
                     }
-                } else {
-                    None
                 }
-            };
-
-            self.push_library(LibrariesMetadataDependency {
-                id: id.to_string(),
-                name: name.to_string(),
-                size,
-                url,
-                path,
-                native,
-            });
+            }
         }
         if let Some(client) = &version.downloads.client{
             let id = format!("com.mojang:minecraft:{}", version.id);
-            if !self.clients_contains(&id) {
+            if !self.contains_client(&id) {
                 let name = format!("Minecraft {}", version.id);
                 let size = &client.size;
                 let url = &client.url;
@@ -442,7 +347,7 @@ impl LibrariesMetadata {
         }
         if let Some(server) = &version.downloads.server{
             let id = format!("com.mojang:minecraft:{}", version.id);
-            if !self.servers_contains(&id) {
+            if !self.contains_server(&id) {
                 let name = format!("Minecraft {}", version.id);
                 let size = &server.size;
                 let url = &server.url;
@@ -460,35 +365,33 @@ impl LibrariesMetadata {
         self
     }
 
-    pub fn libraries_contains(&self, library_id: &String) -> bool{
-        for library in &self.libraries {
-            if library.id.eq(library_id) {
-                return true;
-            }
+    pub fn contains_gav(&self, group: &String, artifact: &String) -> bool{
+        match self.libraries.iter().find(|x|  x.group.eq(group) && x.artifact.eq(artifact)) {
+            Some(_v) => true,
+            None => false,
         }
-        false
     }
 
-    pub fn clients_contains(&self, library_id: &String) -> bool{
-        for library in &self.clients {
-            if library.id.eq(library_id) {
-                return true;
-            }
-        }
-        false
+    pub fn get_gav(&mut self, group: &String, artifact: &String) -> Option<&mut GAV>{
+        self.libraries.iter_mut().find(|x| x.group.eq(group) && x.artifact.eq(artifact))
     }
 
-    pub fn servers_contains(&self, library_id: &String) -> bool{
-        for library in &self.servers {
-            if library.id.eq(library_id) {
-                return true;
-            }
+    pub fn contains_client(&self, library_id: &String) -> bool{
+        match self.clients.iter().find(|x| x.id.eq(library_id)) {
+            Some(_v) => true,
+            None => false,
         }
-        false
     }
 
-    pub fn push_library(&mut self, library: LibrariesMetadataDependency) {
-        self.libraries.push(library);
+    pub fn contains_server(&self, library_id: &String) -> bool{
+        match self.servers.iter().find(|x| x.id.eq(library_id)) {
+            Some(_v) => true,
+            None => false,
+        }
+    }
+
+    pub fn push_library(&mut self, gav: GAV) {
+        self.libraries.push(gav);
     }
 
     pub fn push_client(&mut self, client: LibrariesMetadataDependency) {
@@ -503,5 +406,79 @@ impl LibrariesMetadata {
         let path: PathBuf = common::join_directories(Vec::from(["libraries", "libraries_metadata.json"])).unwrap();
         let file = File::create(path).expect("Unable to create file");
         serde_json::to_writer(file, &self).expect("Unable to write to file");
+    }
+}
+
+impl LibrariesMetadataDependencyNative{
+    pub fn parse_from(version: &VersionLibrary) -> Option<LibrariesMetadataDependencyNative>{
+        match &version.downloads {
+            Some(downloads) => {
+                match &downloads.classifiers {
+                    Some(classifiers) => {
+                        let mut platforms_map: HashMap<String, LibrariesMetadataDependency> = HashMap::new();
+                        for classifier in classifiers {
+                            let dep = Dependency::from_version_library_download_object(&classifier.1);
+                            let id = format!("{}:{}:{}", dep.group, dep.artifact, dep.version);
+                            let name = id.to_owned();
+                            let size = classifier.1.size.to_owned();
+                            let url = &classifier.1.url.to_owned();
+                            let path = &classifier.1.path.to_owned();
+                            platforms_map.insert(classifier.0.to_string(), LibrariesMetadataDependency{
+                                id,
+                                name,
+                                size: Some(size),
+                                url: Some(url.to_string()),
+                                path: Some(path.to_string()),
+                                native: None
+                            });
+                        }
+
+                        let mut rules_map: HashMap<String, LibrariesMetadataDependencyNativeRule> = HashMap::new();
+                        if let Some(rules) = &version.rules {
+                            for rule in rules {
+                                let key;
+                                let allowed = rule.action.eq("allow");
+                                let mut version;
+                                if let Some(os) = &rule.os{
+                                    if let Some(os_version) = &os.version{
+                                        version = Some(os_version.to_string());
+                                    }else{
+                                        version = None;
+                                    }
+                                    key = &os.name;
+                                }else{
+                                    continue;
+                                }
+                                rules_map.insert(key.to_string(), LibrariesMetadataDependencyNativeRule{allowed, version});
+                            }
+                        }
+                        if rules_map.len() != 0 {
+                            Some(LibrariesMetadataDependencyNative{platforms: platforms_map, rules: Some(rules_map)})
+                        }else{
+                            Some(LibrariesMetadataDependencyNative{platforms: platforms_map, rules: None})
+                        }
+                    }
+                    None => None
+                }
+            },
+            None => None
+        }
+    }
+}
+
+impl GAV{
+    pub fn contains_version(&self, ver: &String) -> bool{
+        match self.versions.iter().find(|x| x.id.eq(ver)) {
+            Some(_v) => true,
+            None => false,
+        }
+    }
+
+    pub fn get_version(&mut self, ver: &String) -> Option<&mut LibrariesMetadataDependency>{
+        self.versions.iter_mut().find(|x| x.id.eq(ver))
+    }
+
+    pub fn push_version(&mut self, version: LibrariesMetadataDependency) {
+        self.versions.push(version);
     }
 }
