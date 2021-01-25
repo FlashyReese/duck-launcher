@@ -1,0 +1,33 @@
+name: Rust Cargo
+on: [push, pull_request]
+
+jobs:
+  release:
+    name: Build commit on ${{ matrix.os }}
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, 'windows-latest']
+        rust: [stable]
+
+    steps:
+      - uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: ${{ matrix.rust }}
+      - uses: actions/checkout@v1
+      - name: Build release
+        run: cargo build --verbose --release
+      - name: Upload GitHub release (Windows)
+        uses: AButler/upload-release-assets@v2.0
+        if: matrix.os == 'windows-latest'
+        with:
+          files: 'target/release/duck-launcher.exe'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload GitHub release (unix)
+        uses: AButler/upload-release-assets@v2.0
+        if: matrix.os != 'windows-latest'
+        with:
+          files: 'target/release/duck-launcher'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
