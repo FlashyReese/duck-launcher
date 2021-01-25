@@ -305,7 +305,7 @@ impl LibrariesMetadata {
                 match library_gav{
                     Some(mut gav) => {
                         if !gav.contains_version(&dep.version) {
-                            gav.push_version(library.to_libraries_metadata_dependency(&dep.version));
+                            gav.push_version(library.to_libraries_metadata_dependency(&dep.version).await);
                         }else{
                             match gav.get_version(&dep.version){
                                 Some(mut version) => {
@@ -322,7 +322,7 @@ impl LibrariesMetadata {
                         self.push_library(GAV{
                             group: dep.group,
                             artifact: dep.artifact,
-                            versions: Vec::from([library.to_libraries_metadata_dependency(&dep.version)])
+                            versions: Vec::from([library.to_libraries_metadata_dependency(&dep.version).await])
                         });
                     }
                 }
@@ -438,7 +438,7 @@ impl LibrariesMetadataDependencyNative{
                             for rule in rules {
                                 let key;
                                 let allowed = rule.action.eq("allow");
-                                let mut version;
+                                let version;
                                 if let Some(os) = &rule.os{
                                     if let Some(os_version) = &os.version{
                                         version = Some(os_version.to_string());

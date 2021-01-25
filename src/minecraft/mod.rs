@@ -28,12 +28,17 @@ pub enum InstanceFlavor{
 
 pub struct Instance{
     version: u8,
+    id: String,
     tags: Option<Vec<String>>,
     name: String,
     r#type: InstanceType,
     flavor: InstanceFlavor,
     selected_account: String,
     jvm_arguments: Option<String>,
+
+    mc_version: String,
+    game_arguments: Option<String>,
+    libraries: Vec<String>
 }
 
 pub struct Account{
@@ -54,36 +59,41 @@ pub struct User{
     id: String
 }
 
-impl Version{
-    pub async fn verify_client(&self) -> Result<(), reqwest::Error> {
-        let path: PathBuf = common::join_directories(Vec::from(["libraries", "com", "mojang", "minecraft", &self.id, "client", &format!("{}.jar", self.id)])).unwrap();
-        if path.exists() {
-            if path.metadata().unwrap().len() != self.downloads.client.as_ref().unwrap().size {
-                match common::file_downloader::from_url(&self.downloads.client.as_ref().unwrap().url, &path).await {
-                    Ok(()) => {}
-                    Err(e) => panic!("{}", e)
-                }
-            }
-        } else {
-            match common::file_downloader::from_url(&self.downloads.client.as_ref().unwrap().url, &path).await {
-                Ok(()) => {}
-                Err(e) => panic!("{}", e)
-            }
-        }
-        Ok(())
-    }
-}
-
 impl Instance{
-    pub fn new(name: &str, selected_account: &str) -> Instance{
+    pub async fn new(name: &str, selected_account: &str, mc_version: &str) -> Instance{
         Instance{
             version: 1,
+            id: common::remove_invalid_characters(name),
             tags: None,
             name: name.to_string(),
             r#type: InstanceType::CLIENT,
             flavor: InstanceFlavor:: VANILLA,
             selected_account: selected_account.to_string(),
-            jvm_arguments: None
+            jvm_arguments: None,
+
+            mc_version: mc_version.to_string(),
+            game_arguments: {
+                match Version::get_version(mc_version).await {
+                    Ok(version) => {
+                        match version {
+                            Some(version) => Some(version.get_game_arguments()),
+                            None => None
+                        }
+                    },
+                    Err(e) => panic!("{}", e)
+                }
+            },
+            libraries: {
+                match Version::get_version(mc_version).await {
+                    Ok(version) => {
+                        match version {
+                            Some(version) => version.get_libraries(),
+                            None => vec![]
+                        }
+                    },
+                    Err(e) => vec![]
+                }
+            }
         }
     }
 
@@ -120,6 +130,28 @@ impl Instance{
     }
 }
 
+
+
+
+impl Version{
+    pub async fn verify_client(&self) -> Result<(), reqwest::Error> {
+        let path: PathBuf = common::join_directories(Vec::from(["libraries", "com", "mojang", "minecraft", &self.id, "client", &format!("{}.jar", self.id)])).unwrap();
+        if path.exists() {
+            if path.metadata().unwrap().len() != self.downloads.client.as_ref().unwrap().size {
+                match common::file_downloader::from_url(&self.downloads.client.as_ref().unwrap().url, &path).await {
+                    Ok(()) => {}
+                    Err(e) => panic!("{}", e)
+                }
+            }
+        } else {
+            match common::file_downloader::from_url(&self.downloads.client.as_ref().unwrap().url, &path).await {
+                Ok(()) => {}
+                Err(e) => panic!("{}", e)
+            }
+        }
+        Ok(())
+    }
+}
 
 pub fn launch_client(authentication_response: &AuthenticateResponse, version: &Version) {
     let mut jvm_arguments: Vec<String> = Vec::new();
@@ -228,7 +260,9 @@ pub fn launch_client(authentication_response: &AuthenticateResponse, version: &V
     for argument in game_arguments {
         command.arg(&argument);
     }
-    let mut output = command.stdout(Stdio::inherit()).stderr(Stdio::inherit()).spawn().expect("kekw");
+
+    let path: PathBuf = common::join_directories(Vec::from(["instances", &version.id, ".minecraft"])).unwrap();
+    let mut output = command.current_dir(path).stdout(Stdio::inherit()).stderr(Stdio::inherit()).spawn().expect("kekw");
     let status = output.wait();
     println!("Exited with status {:?}", status);
 }

@@ -8,7 +8,8 @@ use serde_json::Value;
 
 use crate::common;
 use crate::minecraft::version_manifest::{VersionManifest, VersionManifestVersion};
-use crate::minecraft::dependency::{LibrariesMetadataDependency, LibrariesMetadataDependencyNative};
+use crate::minecraft::dependency::{LibrariesMetadataDependency, LibrariesMetadataDependencyNative, LibrariesMetadataDependencyNativeRule, Dependency};
+use serde::__private::Option::Some;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,7 +22,6 @@ pub struct Version {
     pub id: String,
     pub libraries: Vec<VersionLibrary>,
     pub logging: Option<Value>,
-    //todo:
     pub main_class: String,
     pub minecraft_arguments: Option<String>,
     pub minimum_launcher_version: u64,
@@ -73,7 +73,7 @@ pub struct VersionLibrary {
 #[derive(Debug, Deserialize)]
 pub struct VersionLibraryDownload {
     pub artifact: Option<VersionLibraryDownloadObject>,
-    pub classifiers: Option<HashMap<String, VersionLibraryDownloadObject>>
+    pub classifiers: Option<HashMap<String, VersionLibraryDownloadObject>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,13 +104,14 @@ impl Version{
         } else {
             match VersionManifest::get(true).await {
                 Ok(val) => {
-                    for ver in val.versions {
-                        if ver.id.eq(version) {
+                    match val.versions.iter().find(|x| x.id.eq(version)) {
+                        Some(ver) => {
                             match Version::fetch(ver).await {
                                 Ok(()) => return Version::read(&path),
                                 Err(e) => panic!("{}", e)
                             }
-                        }
+                        },
+                        None => println!("Unable to find version")
                     }
                 }
                 Err(e) => panic!("{}", e)
@@ -127,23 +128,63 @@ impl Version{
         Ok(Some(version))
     }
 
-    pub async fn fetch(version: VersionManifestVersion) -> Result<(), reqwest::Error> {
+    pub async fn fetch(version: &VersionManifestVersion) -> Result<(), reqwest::Error> {
         let path: PathBuf = common::join_directories(Vec::from(["meta", "com", "mojang", "minecraft", &version.id, &*format!("{}.json", &version.id)])).unwrap();
         match common::file_downloader::from_url(&version.url, &path).await {
             Ok(()) => Ok(()),
             Err(e) => panic!("{}", e)
         }
     }
+
+    pub fn get_libraries(&self) -> Vec<String>{
+        let mut libraries: Vec<String> = Vec::new();
+        for library in &self.libraries {
+            libraries.push(library.name.to_owned());
+        }
+        libraries
+    }
+
+    pub fn get_game_arguments(&self) -> String{
+        let mut arguments: String = String::new();
+        if let Some(argument) = &self.arguments{
+            for val in &argument.game {
+                if val.is_string() {
+                    arguments.push_str(&format!("{} ", val.as_str().unwrap()));
+                }
+            }
+        }else if let Some(argument) = &self.minecraft_arguments{
+            arguments.push_str(argument);
+        }
+        arguments.trim().to_string()
+    }
 }
 
 impl VersionLibrary{
-    pub fn to_libraries_metadata_dependency(&self, version: &String) -> LibrariesMetadataDependency{
+    pub async fn to_libraries_metadata_dependency(&self, version: &String) -> LibrariesMetadataDependency{
         let id: String = version.to_string();
         let name: String = self.name.to_owned().to_string();
 
         let size: Option<u64> = if let Some(downloads) = &self.downloads {
             if let Some(artifact) = &downloads.artifact {
                 Some(artifact.size)
+            } else {
+                None
+            }
+        } else if let Some(url) = &self.url {
+            let dependency = Dependency::from_version_library(&self);
+            if let Some(dependency) = dependency {
+                let url = format!("{url}/{maven_layout}", url = url, maven_layout = dependency.to_maven_url_layout_jar());
+                let res = reqwest::get(&url).await;//fixme: really dumb
+                match res {
+                    Ok(res) => {
+                        if let Some(length) = res.content_length() {
+                            Some(length)
+                        }else{
+                            None
+                        }
+                    },
+                    Err(e) => panic!("{}", e)
+                }
             } else {
                 None
             }
@@ -157,6 +198,13 @@ impl VersionLibrary{
             } else {
                 None
             }
+        } else if let Some(url) = &self.url {
+            let dependency = Dependency::from_version_library(&self);
+            if let Some(dependency) = dependency {
+                Some(format!("{url}/{maven_layout}", url = url, maven_layout = dependency.to_maven_url_layout_jar()))
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -167,11 +215,18 @@ impl VersionLibrary{
             } else {
                 None
             }
+        } else if let Some(_url) = &self.url {
+            let dependency = Dependency::from_version_library(&self);
+            if let Some(dependency) = dependency {
+                Some(dependency.to_maven_url_layout_jar())
+            } else {
+                None
+            }
         } else {
             None
         };
 
-        let native: Option<LibrariesMetadataDependencyNative> = LibrariesMetadataDependencyNative::parse_from(self);
+        let native: Option<LibrariesMetadataDependencyNative> = LibrariesMetadataDependencyNative::parse_from(&self);
 
         LibrariesMetadataDependency {id, name, size, url, path, native}
     }
